@@ -9,22 +9,13 @@ int main(void)
     //std::string cmd = "dir | find batch";
 
 
-    BatchFileCmd fileCmd;
-    
-    // set command
-    fileCmd.setCommand(cmd);
-    
-    // set enviroment variable
-    fileCmd.addEnvArgs("outver", "123");
-
-    // set callback
-    fileCmd.setPollingCallback([](const std::string& str) -> int
+    BatchFileCmd fileCmd(cmd, { {"outver", "123"} }, 
+        [](const std::string& str) -> int
         {
             std::cout << str;
             return 0;
-        }
-    );
-
+        });
+    
     // write batch file and execute
     if (fileCmd.execute() == true)
     {

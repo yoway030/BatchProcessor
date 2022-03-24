@@ -5,6 +5,33 @@
 #include <chrono>
 #include <sstream>
 
+template<int64_t MinTy, int64_t MaxTy>
+std::string BatchFileCmd::MakeRandHexStr(const std::string& prefix)
+{
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int64_t> dis(MinTy, MaxTy);
+    int64_t randValue = dis(gen);
+
+    std::stringstream stream;
+    stream << prefix << std::hex << randValue;
+
+    return stream.str();
+}
+
+BatchFileCmd::BatchFileCmd(const std::string& cmd, std::initializer_list<std::pair<std::string, std::string>> envArgs,
+    const PollingCallbackFunc& callbackFunc)
+{
+    setCommand(cmd);
+    
+    for (auto&& arg : envArgs)
+    {
+        addEnvArgs(arg.first, arg.second);
+    }
+
+    setPollingCallback(callbackFunc);
+}
+
 void BatchFileCmd::setCommand(const std::string& cmd)
 {
     _command = cmd;
@@ -27,14 +54,7 @@ void BatchFileCmd::setPollingCallback(const PollingCallbackFunc& func)
 
 bool BatchFileCmd::execute(const std::string& tmpFilePrefix)
 {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<int> dis(0x100000, 0xFFFFFF);
-    int randValue = dis(gen);
-
-    std::stringstream batchFileNameStream;
-    batchFileNameStream << tmpFilePrefix << std::hex << randValue << ".bat";
-    std::string batFileName(batchFileNameStream.str());
+    std::string batFileName(BatchFileCmd::MakeRandHexStr(tmpFilePrefix) + ".bat");
 
     _batchFilePath = std::filesystem::current_path();
     _batchFilePath.append(batFileName);
