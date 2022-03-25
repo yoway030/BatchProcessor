@@ -4,6 +4,7 @@
 #include <random>
 #include <chrono>
 #include <sstream>
+#include <fstream>
 
 template<int64_t MinTy, int64_t MaxTy>
 std::string BatchFileCmd::MakeRandHexStr(const std::string& prefix)
@@ -23,7 +24,20 @@ BatchFileCmd::BatchFileCmd(const std::string& cmd, std::initializer_list<std::pa
     const PollingCallbackFunc& callbackFunc)
 {
     setCommand(cmd);
-    
+
+    for (auto&& arg : envArgs)
+    {
+        addEnvArgs(arg.first, arg.second);
+    }
+
+    setPollingCallback(callbackFunc);
+}
+
+BatchFileCmd::BatchFileCmd(const std::filesystem::path& batachFilePath, std::initializer_list<std::pair<std::string, std::string>> envArgs,
+    const PollingCallbackFunc& callbackFunc)
+{
+    setCommandBatchFile(batachFilePath);
+
     for (auto&& arg : envArgs)
     {
         addEnvArgs(arg.first, arg.second);
@@ -35,6 +49,33 @@ BatchFileCmd::BatchFileCmd(const std::string& cmd, std::initializer_list<std::pa
 void BatchFileCmd::setCommand(const std::string& cmd)
 {
     _command = cmd;
+}
+
+void BatchFileCmd::setCommandBatchFile(const std::filesystem::path& batachFilePath)
+{
+    namespace fs = std::filesystem;
+    std::string batchFileContents;
+    std::ifstream batchFile(batachFilePath, std::ios::in);
+
+    try
+    {
+        std::string line;
+        while (batchFile && !batchFile.eof())
+        {
+            getline(batchFile, line);
+            batchFileContents.append(line);
+            batchFileContents.append("\r\n");
+        }
+    }
+    catch (...)
+    {
+        batchFile.close();
+        return;
+    }
+    batchFile.close();
+
+    _command = batchFileContents;
+
 }
 
 bool BatchFileCmd::addEnvArgs(const std::string& name, const std::string& value)
@@ -52,21 +93,45 @@ void BatchFileCmd::setPollingCallback(const PollingCallbackFunc& func)
     _pollingCallback = func;
 }
 
-bool BatchFileCmd::execute(const std::string& tmpFilePrefix)
+bool BatchFileCmd::execute(const std::string& workAbsPath, const std::string& tmpFilePrefix)
 {
+    if (_command.empty())
+    {
+        return false;
+    }
+
     std::string batFileName(BatchFileCmd::MakeRandHexStr(tmpFilePrefix) + ".bat");
 
-    _batchFilePath = std::filesystem::current_path();
+    std::filesystem::path workPath;
+    if (workAbsPath.empty() == true)
+    {
+        workPath = std::filesystem::current_path().c_str();
+    }
+    else
+    {
+        workPath = workAbsPath;
+    }
+    _batchFilePath = workPath;
     _batchFilePath.append(batFileName);
-    _batchFile.open(_batchFilePath, std::ios::trunc);
+
+    std::ofstream batchFile;
+    batchFile.open(_batchFilePath, std::ios::trunc);
+    if (workAbsPath.empty() == false)
+    {
+        batchFile << workPath.root_name().string() << std::endl;
+        batchFile << "cd " << workPath << std::endl;
+    }
 
     for (auto& envArg : _envArgs)
     {
-        _batchFile << "SET " << envArg.first << "=" << envArg.second << std::endl;
+        batchFile << "SET " << envArg.first << "=" << envArg.second << std::endl;
     }
-    _batchFile << _command << std::endl;
+    batchFile << _command << std::endl;
+    batchFile.close();
 
-    _pipeFile = _wpopen(_batchFilePath.c_str(), L"rt");
+    std::wstring redirectCommand = _batchFilePath;
+    redirectCommand.append(L" 2>&1");
+    _pipeFile = _wpopen(redirectCommand.c_str(), L"rt");
     if (_pipeFile == NULL)
     {
         terminate();
@@ -84,7 +149,11 @@ bool BatchFileCmd::polling()
         return false;
     }
 
-    _pollingCallback(pipeBuf);
+    if (_pollingCallback)
+    {
+        _pollingCallback(pipeBuf);
+    }
+
     return true;
 }
 
@@ -97,26 +166,14 @@ bool BatchFileCmd::terminate()
         _returnCode = _pclose(_pipeFile);
     }
 
-    if (_batchFile.is_open() == true)
+    try
     {
-        _batchFile.close();
         std::filesystem::remove(_batchFilePath);
+        _removeFile = 1;
     }
-
+    catch (...)
+    {
+        _removeFile = 0;
+    }
     return true;
-}
-
-int BatchFileCmd::endOfFile()
-{
-    return _endOfFile;
-}
-
-int BatchFileCmd::errorCode()
-{
-    return _errorCode;
-}
-
-int BatchFileCmd::returnCode()
-{
-    return _returnCode;
 }

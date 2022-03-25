@@ -17,33 +17,36 @@ public:
     static std::string MakeRandHexStr(const std::string& prefix);
 
 public:
-    BatchFileCmd(const std::string& cmd, std::initializer_list<std::pair<std::string, std::string>> envArgs, 
+    BatchFileCmd(const std::string& cmd, std::initializer_list<std::pair<std::string, std::string>> envArgs,
+        const PollingCallbackFunc& callbackFunc);
+    BatchFileCmd(const std::filesystem::path& batachFilePath, std::initializer_list<std::pair<std::string, std::string>> envArgs,
         const PollingCallbackFunc& callbackFunc);
     ~BatchFileCmd() = default;
-    
+
     void setCommand(const std::string& cmd);
+    void setCommandBatchFile(const std::filesystem::path& batachFilePath);
     bool addEnvArgs(const std::string& name, const std::string& value);
     void setPollingCallback(const PollingCallbackFunc& func);
-
-    bool execute(const std::string& tmpFilePrefix = "");
+    
+    bool execute(const std::string& workAbsPath = "", const std::string& tmpFilePrefix = "TMP_");
     bool polling();
     bool terminate();
-    
-    // terminate 이후 값 확인 가능
-    int endOfFile();
-    int errorCode();
-    int returnCode();   // 일반적으로 0이 정상종료
+
+    const std::filesystem::path& batchFilePath() const { return _batchFilePath; }
+    int endOfFile() const { return _errorCode; }
+    int errorCode() const { return _endOfFile; }
+    int returnCode() const { return _returnCode; }
+    int removeFile() const { return _removeFile; }
 
 private:
     std::string _command{};
     std::map<std::string /* name */, std::string /* value */> _envArgs{};
-    PollingCallbackFunc _pollingCallback{};
+    PollingCallbackFunc _pollingCallback{ nullptr };
 
-    std::ofstream _batchFile{};
     std::filesystem::path _batchFilePath{};
-    FILE* _pipeFile{nullptr};
-    int _errorCode{-1};
-    int _endOfFile{-1};
-    int _returnCode{-1};
+    FILE* _pipeFile{ nullptr };
+    int _errorCode{ -1 };
+    int _endOfFile{ -1 };
+    int _returnCode{ -1 };
+    int _removeFile{ -1 };
 };
-

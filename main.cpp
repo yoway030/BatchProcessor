@@ -1,12 +1,15 @@
 #include "BatchCmd.h"
 #include <iostream>
+#include <filesystem>
 
 int main(void)
 {
     // execute sample batch file
-    std::string cmd = "test.bat";
+    std::string cmd = "test.bat";   // call this batch
+    
     // enable this
     //std::string cmd = "dir | find batch";
+    //std::filesystem::path cmd = "test.bat";   // copy this batch with env args
 
 
     BatchFileCmd fileCmd(cmd, { {"outver", "123"} }, 
