@@ -2,6 +2,7 @@
 #include <iostream>
 #include <filesystem>
 #include <chrono>
+#include <thread>
 
 int main(void)
 {
@@ -33,6 +34,7 @@ int main(void)
         }
 
         std::cout << "do something" << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(4000));
 
         while (fileCmd.polling(pipeBuf) == true)
         {
