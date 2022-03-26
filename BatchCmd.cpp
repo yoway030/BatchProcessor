@@ -7,7 +7,7 @@
 #include <fstream>
 
 template<int64_t MinTy, int64_t MaxTy>
-std::string BatchFileCmd::MakeRandHexStr(const std::string& prefix)
+std::string BatchProcessor::MakeRandHexStr(std::string_view prefix)
 {
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -20,67 +20,60 @@ std::string BatchFileCmd::MakeRandHexStr(const std::string& prefix)
     return stream.str();
 }
 
-BatchFileCmd::BatchFileCmd(const std::string& cmd, std::initializer_list<std::pair<std::string, std::string>> envArgs,
-    const PollingCallbackFunc& callbackFunc)
+BatchProcessor::BatchProcessor(std::string_view batchCmd, std::initializer_list<EnvArgView> envArglist)
 {
-    setCommand(cmd);
+    setCommand(batchCmd);
 
-    for (auto&& arg : envArgs)
+    for (auto&& arg : envArglist)
     {
-        addEnvArgs(arg.first, arg.second);
+        addEnvArgs(arg);
     }
-
-    setPollingCallback(callbackFunc);
 }
 
-BatchFileCmd::BatchFileCmd(const std::filesystem::path& batachFilePath, std::initializer_list<std::pair<std::string, std::string>> envArgs,
-    const PollingCallbackFunc& callbackFunc)
+BatchProcessor::BatchProcessor(const std::filesystem::path& batchCmdSourceFile, std::initializer_list<EnvArgView> envArglist)
 {
-    setCommandBatchFile(batachFilePath);
+    setCommandSourceFile(batchCmdSourceFile);
 
-    for (auto&& arg : envArgs)
+    for (auto&& arg : envArglist)
     {
-        addEnvArgs(arg.first, arg.second);
+        addEnvArgs(arg);
     }
-
-    setPollingCallback(callbackFunc);
 }
 
-void BatchFileCmd::setCommand(const std::string& cmd)
+void BatchProcessor::setCommand(std::string_view batchCmd)
 {
-    _command = cmd;
+    _batchCommand = batchCmd;
 }
 
-void BatchFileCmd::setCommandBatchFile(const std::filesystem::path& batachFilePath)
+void BatchProcessor::setCommandSourceFile(const std::filesystem::path& batchCmdSourceFile)
 {
     namespace fs = std::filesystem;
-    std::string batchFileContents;
-    std::ifstream batchFile(batachFilePath, std::ios::in);
+    std::string batchCmd;
+    std::ifstream sourceFile(batchCmdSourceFile, std::ios::in);
 
     try
     {
         std::string line;
-        while (batchFile && !batchFile.eof())
+        while (sourceFile && !sourceFile.eof())
         {
-            getline(batchFile, line);
-            batchFileContents.append(line);
-            batchFileContents.append("\r\n");
+            getline(sourceFile, line);
+            batchCmd.append(line);
+            batchCmd.append("\r\n");
         }
     }
     catch (...)
     {
-        batchFile.close();
+        sourceFile.close();
         return;
     }
-    batchFile.close();
+    sourceFile.close();
 
-    _command = batchFileContents;
-
+    setCommand(batchCmd);
 }
 
-bool BatchFileCmd::addEnvArgs(const std::string& name, const std::string& value)
+bool BatchProcessor::addEnvArgs(const EnvArgView& evnArg)
 {
-    auto iter = _envArgs.emplace(name, value);
+    auto iter = _envArgs.emplace(evnArg);
     if (iter.second == false)
     {
         return false;
@@ -88,19 +81,14 @@ bool BatchFileCmd::addEnvArgs(const std::string& name, const std::string& value)
     return true;
 }
 
-void BatchFileCmd::setPollingCallback(const PollingCallbackFunc& func)
+bool BatchProcessor::execute(std::string_view workAbsPath, std::string_view genBatchPrefix)
 {
-    _pollingCallback = func;
-}
-
-bool BatchFileCmd::execute(const std::string& workAbsPath, const std::string& tmpFilePrefix)
-{
-    if (_command.empty())
+    if (_batchCommand.empty())
     {
         return false;
     }
 
-    std::string batFileName(BatchFileCmd::MakeRandHexStr(tmpFilePrefix) + ".bat");
+    std::string batFileName(BatchProcessor::MakeRandHexStr(genBatchPrefix) + ".bat");
 
     std::filesystem::path workPath;
     if (workAbsPath.empty() == true)
@@ -111,11 +99,11 @@ bool BatchFileCmd::execute(const std::string& workAbsPath, const std::string& tm
     {
         workPath = workAbsPath;
     }
-    _batchFilePath = workPath;
-    _batchFilePath.append(batFileName);
+    _generatedBatchFilePath = workPath;
+    _generatedBatchFilePath.append(batFileName);
 
     std::ofstream batchFile;
-    batchFile.open(_batchFilePath, std::ios::trunc);
+    batchFile.open(_generatedBatchFilePath, std::ios::trunc);
     if (workAbsPath.empty() == false)
     {
         batchFile << workPath.root_name().string() << std::endl;
@@ -126,10 +114,10 @@ bool BatchFileCmd::execute(const std::string& workAbsPath, const std::string& tm
     {
         batchFile << "SET " << envArg.first << "=" << envArg.second << std::endl;
     }
-    batchFile << _command << std::endl;
+    batchFile << _batchCommand << std::endl;
     batchFile.close();
 
-    std::wstring redirectCommand = _batchFilePath;
+    std::wstring redirectCommand = _generatedBatchFilePath;
     redirectCommand.append(L" 2>&1");
     _pipeFile = _wpopen(redirectCommand.c_str(), L"rt");
     if (_pipeFile == NULL)
@@ -140,24 +128,17 @@ bool BatchFileCmd::execute(const std::string& workAbsPath, const std::string& tm
     return true;
 }
 
-bool BatchFileCmd::polling()
+bool BatchProcessor::polling(char pipeBuf[BatchProcessor::PIPE_SIZE])
 {
-    char pipeBuf[PIPE_SIZE];
-
     if (fgets(pipeBuf, PIPE_SIZE, _pipeFile) == NULL)
     {
         return false;
     }
 
-    if (_pollingCallback)
-    {
-        _pollingCallback(pipeBuf);
-    }
-
     return true;
 }
 
-bool BatchFileCmd::terminate()
+bool BatchProcessor::terminate()
 {
     if (_pipeFile != NULL)
     {
@@ -168,12 +149,13 @@ bool BatchFileCmd::terminate()
 
     try
     {
-        std::filesystem::remove(_batchFilePath);
+        std::filesystem::remove(_generatedBatchFilePath);
         _removeFile = 1;
     }
     catch (...)
     {
         _removeFile = 0;
     }
+
     return true;
 }

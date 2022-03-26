@@ -7,43 +7,39 @@
 #include <filesystem>
 #include <initializer_list>
 
-class BatchFileCmd
+class BatchProcessor
 {
 public:
     static constexpr int PIPE_SIZE = 1024;
-    using PollingCallbackFunc = std::function<int(const std::string&)>;
+    using EnvArgView = std::pair<std::string_view, std::string_view>;
 
     template<int64_t MinTy = 0x100000, int64_t MaxTy = 0xFFFFFF>
-    static std::string MakeRandHexStr(const std::string& prefix);
+    static std::string MakeRandHexStr(std::string_view prefix);
 
 public:
-    BatchFileCmd(const std::string& cmd, std::initializer_list<std::pair<std::string, std::string>> envArgs,
-        const PollingCallbackFunc& callbackFunc);
-    BatchFileCmd(const std::filesystem::path& batachFilePath, std::initializer_list<std::pair<std::string, std::string>> envArgs,
-        const PollingCallbackFunc& callbackFunc);
-    ~BatchFileCmd() = default;
+    BatchProcessor(std::string_view batchCmd, std::initializer_list<EnvArgView> envArglist);
+    BatchProcessor(const std::filesystem::path& batchCmdSourceFile, std::initializer_list<EnvArgView> envArglist);
+    ~BatchProcessor() = default;
 
-    void setCommand(const std::string& cmd);
-    void setCommandBatchFile(const std::filesystem::path& batachFilePath);
-    bool addEnvArgs(const std::string& name, const std::string& value);
-    void setPollingCallback(const PollingCallbackFunc& func);
+    void setCommand(std::string_view batchCmd);
+    void setCommandSourceFile(const std::filesystem::path& batchCmdSourceFile);
+    bool addEnvArgs(const EnvArgView& arg);
     
-    bool execute(const std::string& workAbsPath = "", const std::string& tmpFilePrefix = "TMP_");
-    bool polling();
+    bool execute(std::string_view workAbsPath = "", std::string_view genBatchPrefix = "TMP_");
+    bool polling(char pipeBuf[PIPE_SIZE]);
     bool terminate();
 
-    const std::filesystem::path& batchFilePath() const { return _batchFilePath; }
+    const std::filesystem::path& generatedBatchFilePath() const { return _generatedBatchFilePath; }
     int endOfFile() const { return _errorCode; }
     int errorCode() const { return _endOfFile; }
     int returnCode() const { return _returnCode; }
     int removeFile() const { return _removeFile; }
 
 private:
-    std::string _command{};
+    std::string _batchCommand{};
+    std::filesystem::path _generatedBatchFilePath{};    
     std::map<std::string /* name */, std::string /* value */> _envArgs{};
-    PollingCallbackFunc _pollingCallback{ nullptr };
-
-    std::filesystem::path _batchFilePath{};
+    
     FILE* _pipeFile{ nullptr };
     int _errorCode{ -1 };
     int _endOfFile{ -1 };
