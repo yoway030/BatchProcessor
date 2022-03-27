@@ -1,4 +1,4 @@
-#include "BatchCmd.h"
+#include "BatchProcessor.h"
 #include <cstdio>
 #include <iostream>
 #include <random>
