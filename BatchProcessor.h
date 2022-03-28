@@ -25,29 +25,29 @@ public:
     static std::string MakeRandHexStr(std::string_view prefix);
 
 public:
+    BatchProcessor();
     BatchProcessor(std::string_view batchCmd, std::initializer_list<EnvArgView> envArglist);
     BatchProcessor(const std::filesystem::path& batchSourceFile, std::initializer_list<EnvArgView> envArglist);
-    ~BatchProcessor() = default;
+    ~BatchProcessor();
 
-    bool execute(std::string_view workAbsPath = "", std::string_view genBatchPrefix = "TMP_");
-    bool polling(char pipeBuf[PIPE_SIZE]);
-    bool terminate();
+    void setCommand(std::string_view batchCmd);
+    void setCommand(std::string&& batchCmd);
+    void setCommandSourceFile(const std::filesystem::path& _batchSourcePath);
+    void setEnvArgs(std::initializer_list<EnvArgView> envArglist);
 
     const std::string& getBatchCommand() const { return _batchCommand; }
     const std::filesystem::path& getBatchSourcePath() const { return _batchSourcePath; }
     const EvnArgMap& getEnvArgs() const { return _envArgs; }
+
+    bool execute(std::string_view workAbsPath = "", std::string_view genBatchPrefix = "TMP_");
+    bool polling(char pipeBuf[PIPE_SIZE]);
+    bool terminate();
 
     bool isExecuted() const { return _isExecuted; }
     bool isTerminated() const { return _isTerminated; }
 
     const std::filesystem::path& getBatchGeneratedPath() const { return _batchGeneratedPath; }
     const ExecuteResult& getExecResult() const { return _execResult; }
-
-private:
-    void setCommand(std::string_view batchCmd);
-    void setCommand(std::string&& batchCmd);
-    void setCommandSourceFile(const std::filesystem::path& _batchSourcePath);
-    void setEnvArgs(std::initializer_list<EnvArgView> envArglist);
 
 private:
     std::string _batchCommand{};

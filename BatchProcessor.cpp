@@ -20,6 +20,15 @@ std::string BatchProcessor::MakeRandHexStr(std::string_view prefix)
     return stream.str();
 }
 
+BatchProcessor::BatchProcessor()
+{
+}
+
+BatchProcessor::~BatchProcessor()
+{
+    terminate();
+}
+
 BatchProcessor::BatchProcessor(std::string_view batchCmd, std::initializer_list<EnvArgView> envArglist)
 {
     setCommand(batchCmd);
@@ -153,6 +162,7 @@ bool BatchProcessor::terminate()
         _execResult.endOfFile = std::feof(_pipeFile);
         _execResult.errorCode = std::ferror(_pipeFile);
         _execResult.returnCode = _pclose(_pipeFile);
+        _pipeFile = NULL;
     }
 
     try

@@ -13,7 +13,6 @@ int main(void)
     //std::string cmd = "dir | find batch";
     //std::filesystem::path cmd = "test.bat";   // copy this batch with env args
 
-
     BatchProcessor batchProcessor({ cmd.data(), cmd.length() }, { {"outver", "123"} });
     
     // write batch file and execute
