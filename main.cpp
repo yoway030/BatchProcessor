@@ -14,15 +14,15 @@ int main(void)
     //std::filesystem::path cmd = "test.bat";   // copy this batch with env args
 
 
-    BatchProcessor fileCmd({ cmd.data(), cmd.length() }, { {"outver", "123"} });
+    BatchProcessor batchProcessor({ cmd.data(), cmd.length() }, { {"outver", "123"} });
     
     // write batch file and execute
-    if (fileCmd.execute() == true)
+    if (batchProcessor.execute() == true)
     {
         char pipeBuf[BatchProcessor::PIPE_SIZE];
         auto start = std::chrono::steady_clock::now();
 
-        while (fileCmd.polling(pipeBuf) == true)
+        while (batchProcessor.polling(pipeBuf) == true)
         {
             std::cout << pipeBuf;
 
@@ -36,17 +36,18 @@ int main(void)
         std::cout << "do something" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(4000));
 
-        while (fileCmd.polling(pipeBuf) == true)
+        while (batchProcessor.polling(pipeBuf) == true)
         {
             std::cout << pipeBuf;
         }
 
         // need terminate for delete temporory batch file and take return code.
-        fileCmd.terminate();
+        batchProcessor.terminate();
 
-        std::cout << "error : " << fileCmd.errorCode() << std::endl;
-        std::cout << "close : " << fileCmd.endOfFile() << std::endl;
-        std::cout << "return : " << fileCmd.returnCode() << std::endl;
-        std::cout << "remove : " << fileCmd.removeFile() << std::endl;
+        BatchProcessor::ExecuteResult execResult = batchProcessor.getExecResult();
+        std::cout << "error : " << execResult.errorCode << std::endl;
+        std::cout << "close : " << execResult.endOfFile << std::endl;
+        std::cout << "return : " << execResult.returnCode << std::endl;
+        std::cout << "remove : " << execResult.removeFile << std::endl;
     }
 }

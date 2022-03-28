@@ -23,21 +23,13 @@ std::string BatchProcessor::MakeRandHexStr(std::string_view prefix)
 BatchProcessor::BatchProcessor(std::string_view batchCmd, std::initializer_list<EnvArgView> envArglist)
 {
     setCommand(batchCmd);
-
-    for (auto&& arg : envArglist)
-    {
-        addEnvArgs(arg);
-    }
+    setEnvArgs(envArglist);
 }
 
-BatchProcessor::BatchProcessor(const std::filesystem::path& batchCmdSourceFile, std::initializer_list<EnvArgView> envArglist)
+BatchProcessor::BatchProcessor(const std::filesystem::path& batchSourcePath, std::initializer_list<EnvArgView> envArglist)
 {
-    setCommandSourceFile(batchCmdSourceFile);
-
-    for (auto&& arg : envArglist)
-    {
-        addEnvArgs(arg);
-    }
+    setCommandSourceFile(batchSourcePath);
+    setEnvArgs(envArglist);
 }
 
 void BatchProcessor::setCommand(std::string_view batchCmd)
@@ -45,11 +37,15 @@ void BatchProcessor::setCommand(std::string_view batchCmd)
     _batchCommand = batchCmd;
 }
 
-void BatchProcessor::setCommandSourceFile(const std::filesystem::path& batchCmdSourceFile)
+void BatchProcessor::setCommand(std::string&& batchCmd)
 {
-    namespace fs = std::filesystem;
+    _batchCommand = std::move(batchCmd);
+}
+
+void BatchProcessor::setCommandSourceFile(const std::filesystem::path& batchSourcePath)
+{
     std::string batchCmd;
-    std::ifstream sourceFile(batchCmdSourceFile, std::ios::in);
+    std::ifstream sourceFile(batchSourcePath, std::ios::in);
 
     try
     {
@@ -68,22 +64,22 @@ void BatchProcessor::setCommandSourceFile(const std::filesystem::path& batchCmdS
     }
     sourceFile.close();
 
-    setCommand(batchCmd);
+    _batchSourcePath = batchSourcePath;
+    setCommand(std::move(batchCmd));
 }
 
-bool BatchProcessor::addEnvArgs(const EnvArgView& evnArg)
+void BatchProcessor::setEnvArgs(std::initializer_list<EnvArgView> envArglist)
 {
-    auto iter = _envArgs.emplace(evnArg);
-    if (iter.second == false)
-    {
-        return false;
-    }
-    return true;
+    _envArgs.insert(envArglist.begin(), envArglist.end());
 }
 
 bool BatchProcessor::execute(std::string_view workAbsPath, std::string_view genBatchPrefix)
 {
-    if (_batchCommand.empty())
+    if (isExecuted() == true)
+    {
+        return false;
+    }
+    else if (_batchCommand.empty() == true)
     {
         return false;
     }
@@ -99,11 +95,11 @@ bool BatchProcessor::execute(std::string_view workAbsPath, std::string_view genB
     {
         workPath = workAbsPath;
     }
-    _generatedBatchFilePath = workPath;
-    _generatedBatchFilePath.append(batFileName);
+    _batchGeneratedPath = workPath;
+    _batchGeneratedPath.append(batFileName);
 
     std::ofstream batchFile;
-    batchFile.open(_generatedBatchFilePath, std::ios::trunc);
+    batchFile.open(_batchGeneratedPath, std::ios::trunc);
     if (workAbsPath.empty() == false)
     {
         batchFile << workPath.root_name().string() << std::endl;
@@ -117,9 +113,11 @@ bool BatchProcessor::execute(std::string_view workAbsPath, std::string_view genB
     batchFile << _batchCommand << std::endl;
     batchFile.close();
 
-    std::wstring redirectCommand = _generatedBatchFilePath;
+    std::wstring redirectCommand = _batchGeneratedPath;
     redirectCommand.append(L" 2>&1");
     _pipeFile = _wpopen(redirectCommand.c_str(), L"rt");
+    _isExecuted = true;
+
     if (_pipeFile == NULL)
     {
         terminate();
@@ -130,6 +128,11 @@ bool BatchProcessor::execute(std::string_view workAbsPath, std::string_view genB
 
 bool BatchProcessor::polling(char pipeBuf[BatchProcessor::PIPE_SIZE])
 {
+    if (isExecuted() == false || isTerminated() == true)
+    {
+        return false;
+    }
+
     if (fgets(pipeBuf, PIPE_SIZE, _pipeFile) == NULL)
     {
         return false;
@@ -140,22 +143,28 @@ bool BatchProcessor::polling(char pipeBuf[BatchProcessor::PIPE_SIZE])
 
 bool BatchProcessor::terminate()
 {
+    if (isExecuted() == false || isTerminated() == true)
+    {
+        return false;
+    }
+
     if (_pipeFile != NULL)
     {
-        _endOfFile = std::feof(_pipeFile);
-        _errorCode = std::ferror(_pipeFile);
-        _returnCode = _pclose(_pipeFile);
+        _execResult.endOfFile = std::feof(_pipeFile);
+        _execResult.errorCode = std::ferror(_pipeFile);
+        _execResult.returnCode = _pclose(_pipeFile);
     }
 
     try
     {
-        std::filesystem::remove(_generatedBatchFilePath);
-        _removeFile = 1;
+        std::filesystem::remove(_batchGeneratedPath);
+        _execResult.removeFile = 1;
     }
     catch (...)
     {
-        _removeFile = 0;
+        _execResult.removeFile = 0;
     }
 
+    _isTerminated = true;
     return true;
 }
